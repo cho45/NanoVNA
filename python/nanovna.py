@@ -3,6 +3,8 @@ import serial
 import numpy as np
 import pylab as pl
 import struct
+from matplotlib.ticker import EngFormatter
+
 from serial.tools import list_ports
 
 VID = 0x0483 #1155
@@ -258,16 +260,45 @@ class NanoVNA:
         ax.plot(np.angle(x), np.abs(x))
 
     def tdr(self, x):
-        pl.grid(True)
-        window = np.blackman(len(x))
-        NFFT = 256
-        td = np.abs(np.fft.ifft(window * x, NFFT))
+        window = np.kaiser(len(x) * 2, 6.0)
+        x *= window[len(x):]
+        print(x)
+        NFFT = 2048
+        data = np.zeros(NFFT, dtype='complex128')
+
+        dcExtrapolation = True
+
+        if dcExtrapolation:
+            # DC extrapolation
+            nn = np.mean(np.diff(x[0:4]))
+            dc = x[0] - nn
+            data[0] = dc
+
+            # positive freq
+            data[1:len(x)+1] = x
+            # negative freq
+            data[-len(x):] = np.conjugate(x)[::-1]
+        else:
+            # dc + positive freq
+            data[0:len(x)] = x
+            # negative freq
+            data[-len(x)+1:] = np.conjugate(x)[1:][::-1]
+
+
+        fig, ax = pl.subplots() 
+        ax.plot(data.real)
+        ax.plot(data.imag)
+
+        td = np.real(np.fft.ifft(data, NFFT))
+        td = td.cumsum()
+        print(self.frequencies[1] - self.frequencies[0])
         time = 1 / (self.frequencies[1] - self.frequencies[0])
         t_axis = np.linspace(0, time, NFFT)
-        pl.plot(t_axis, td)
-        pl.xlim(0, time)
-        pl.xlabel("time (s)")
-        pl.ylabel("magnitude")
+
+        fig, ax = pl.subplots() 
+        pl.xlim(0, 20e-9)
+        ax.plot(t_axis, td)
+        ax.xaxis.set_major_formatter(EngFormatter(unit='s'))
 
     def smithd3(self, x):
         import mpld3
