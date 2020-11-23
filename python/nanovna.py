@@ -261,16 +261,18 @@ class NanoVNA:
 
     def tdr(self, x):
         window = np.kaiser(len(x) * 2, 6.0)
-        x *= window[len(x):]
-        print(x)
-        NFFT = 2048
+        # x *= window[len(x):]
+        nh = int(self.frequencies[-1] / self.frequencies[0])
+        NFFT = 2**(len(str(bin(nh)[2:])))
         data = np.zeros(NFFT, dtype='complex128')
 
         dcExtrapolation = True
 
         if dcExtrapolation:
             # DC extrapolation
-            nn = np.mean(np.diff(x[0:4]))
+            di = np.diff(x[0:3])
+            print(di)
+            nn = np.mean(di)
             dc = x[0] - nn
             data[0] = dc
 
