@@ -260,7 +260,8 @@ class NanoVNA:
         ax.plot(np.angle(x), np.abs(x))
 
     def tdr(self):
-        dcExtrapolation = False
+        dcExtrapolation = True
+        port = 0
 
         if dcExtrapolation:
             print("start:%d stop:%d points:%d" % (self.frequencies[0], self.frequencies[-1], self.points))
@@ -268,50 +269,92 @@ class NanoVNA:
             print("start:%d stop:%d points:%d" % (self.frequencies[0], self.frequencies[-1], self.points))
 
         data = nv.scan()
-        x = data[0]
-        window = np.kaiser(len(x) * 2, 6.0)
-        x *= window[len(x):]
+        x = data[port]
+        # window = np.kaiser(len(x) * 2, 6.0)
+        # x *= window[len(x):]
         nh = len(x) * 2
         NFFT = 2**(len(str(bin(nh)[2:])))
         print("num: %d, NFFT: %d" % (nh, NFFT))
         data = np.zeros(NFFT, dtype='complex128')
 
+        fig = pl.figure(figsize=(8,10), dpi=100)
+
+        ax1 = fig.add_subplot(3, 1, 1)
+        ax1.set_ylim(-1.2, +1.2)
+        ax1.set_xlim(0, 200e3)
+        ax1.xaxis.set_major_formatter(EngFormatter(unit='Hz'))
+
+        ax2 = fig.add_subplot(3, 1, 2)
+        ax2.set_ylim(-1.2, +1.2)
+        ax2.set_xlim(0, 200e6)
+        ax2.xaxis.set_major_formatter(EngFormatter(unit='Hz'))
+
+        ax3 = fig.add_subplot(3, 1, 3)
+        ax3.set_ylim(-1.2, +1.2)
+        ax3.set_xlim(0, 20e-9)
+        ax3.axhline(y=0, color='grey')
+        ax3.xaxis.set_major_formatter(EngFormatter(unit='s'))
 
         if dcExtrapolation:
             # DC extrapolation
-            di = np.diff(x[0:3])
+
+            ## get vna lowest freq data 50kHz 100kHz 150kHz
+            _start = self.frequencies[0]
+            _end   = self.frequencies[-1]
+            _points = self.points
+            nv.set_frequencies(50e3, 50e3 * 3, 3)
+            print(self.frequencies)
+            expdata = np.array(nv.scan()[port])
+            ax1.plot(self.frequencies, expdata.real[0:3], marker="+", label="measured real", markersize=10)
+            ax1.plot(self.frequencies, expdata.imag[0:3], marker="+", label="measured imag", markersize=10)
+            # restore
+            nv.set_frequencies(_start, _end, _points)
+
+            ## extrapolate from lowest 3 data points
+            di = np.diff(expdata[0:3])
             print(di)
             nn = np.mean(di)
-            dc = x[0] - nn
-            data[0] = dc
+            dc = expdata[0] - nn
+            ax1.plot([0], dc.real, marker="*", label="extrapolated real", markersize=10)
+            ax1.plot([0], dc.imag, marker="*", label="extrapolated imag", markersize=10)
 
-            # positive freq
-            data[1:len(x)+1] = x
             # negative freq
             data[-len(x):] = np.conjugate(x)[::-1]
+            # positive freq
+            data[1:len(x)+1] = x
+            ## data[0] is dc term
+            data[0] = dc
         else:
             # dc + positive freq
             data[0:len(x)] = x
             # negative freq
             data[-len(x)+1:] = np.conjugate(x)[1:][::-1]
 
+        step = self.frequencies[1] - self.frequencies[0]
+        xaxis = np.concatenate([
+            np.linspace(0, step * NFFT / 2, int(NFFT / 2)),
+            np.linspace(-step * NFFT / 2, 0, int(NFFT / 2), endpoint=False)
+            ])
 
-        fig, ax = pl.subplots() 
-        pl.xlim(0, 100)
-        ax.plot(data.real, marker=".")
-        ax.plot(data.imag, marker=".")
+        ax1.plot(xaxis, data.real, marker=".", color="lightgrey", label="real")
+        ax1.plot(xaxis, data.imag, marker=".", color="lightgrey", label="imag")
+        ax2.plot(xaxis, data.real, marker=".", label="real")
+        ax2.plot(xaxis, data.imag, marker=".", label="imag")
 
-        td = np.real(np.fft.ifft(data, NFFT))
-        td = td.cumsum()
+        td = np.fft.ifft(data, NFFT)
+        print(td)
+        td = np.real(td)
+        step = td.cumsum()
         print(self.frequencies[1] - self.frequencies[0])
         time = 1 / (self.frequencies[1] - self.frequencies[0])
         t_axis = np.linspace(0, time, NFFT)
 
-        fig, ax = pl.subplots() 
-        pl.ylim(-1.2, +1.2)
-        pl.xlim(0, 20e-9)
-        ax.plot(t_axis, td)
-        ax.xaxis.set_major_formatter(EngFormatter(unit='s'))
+        ax3.plot(t_axis, step, label="step response")
+        ax3.plot(t_axis, td,label="impulse response")
+
+        ax1.legend( loc = 'lower right')
+        ax2.legend( loc = 'lower right')
+        ax3.legend( loc = 'lower right')
 
     def smithd3(self, x):
         import mpld3
