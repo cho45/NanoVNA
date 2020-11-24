@@ -197,7 +197,7 @@ class NanoVNA:
             seg_start = freqs[0]
             seg_stop = freqs[segment_length-1] if len(freqs) >= segment_length else freqs[-1]
             length = segment_length if len(freqs) >= segment_length else len(freqs)
-            #print((seg_start, seg_stop, length))
+            print((seg_start, seg_stop, length))
             self.send_scan(seg_start, seg_stop, length)
             array0.extend(self.data(0))
             array1.extend(self.data(1))
@@ -259,14 +259,23 @@ class NanoVNA:
         ax.set_ylim((0,1))
         ax.plot(np.angle(x), np.abs(x))
 
-    def tdr(self, x):
+    def tdr(self):
+        dcExtrapolation = False
+
+        if dcExtrapolation:
+            print("start:%d stop:%d points:%d" % (self.frequencies[0], self.frequencies[-1], self.points))
+            nv.set_frequencies(int(self.frequencies[-1] / opt.points), opt.stop, opt.points)
+            print("start:%d stop:%d points:%d" % (self.frequencies[0], self.frequencies[-1], self.points))
+
+        data = nv.scan()
+        x = data[0]
         window = np.kaiser(len(x) * 2, 6.0)
-        # x *= window[len(x):]
-        nh = int(self.frequencies[-1] / self.frequencies[0])
+        x *= window[len(x):]
+        nh = len(x) * 2
         NFFT = 2**(len(str(bin(nh)[2:])))
+        print("num: %d, NFFT: %d" % (nh, NFFT))
         data = np.zeros(NFFT, dtype='complex128')
 
-        dcExtrapolation = True
 
         if dcExtrapolation:
             # DC extrapolation
@@ -288,8 +297,9 @@ class NanoVNA:
 
 
         fig, ax = pl.subplots() 
-        ax.plot(data.real)
-        ax.plot(data.imag)
+        pl.xlim(0, 100)
+        ax.plot(data.real, marker=".")
+        ax.plot(data.imag, marker=".")
 
         td = np.real(np.fft.ifft(data, NFFT))
         td = td.cumsum()
@@ -298,6 +308,7 @@ class NanoVNA:
         t_axis = np.linspace(0, time, NFFT)
 
         fig, ax = pl.subplots() 
+        pl.ylim(-1.2, +1.2)
         pl.xlim(0, 20e-9)
         ax.plot(t_axis, td)
         ax.xaxis.set_major_formatter(EngFormatter(unit='s'))
@@ -434,6 +445,10 @@ if __name__ == '__main__':
         exit(0)
     if opt.start or opt.stop or opt.points:
         nv.set_frequencies(opt.start, opt.stop, opt.points)
+    if opt.tdr:
+        nv.tdr()
+        pl.show()
+        exit()
     plot = opt.phase or opt.plot or opt.vswr or opt.delay or opt.groupdelay or opt.smith or opt.unwrapphase or opt.polar or opt.tdr
     if plot or opt.save:
         p = int(opt.port) if opt.port else 0
@@ -465,7 +480,5 @@ if __name__ == '__main__':
         nv.groupdelay(s)
     if opt.vswr:
         nv.vswr(s)
-    if opt.tdr:
-        nv.tdr(s)
     if plot:
         pl.show()
