@@ -264,6 +264,7 @@ class NanoVNA:
         port = 0
 
         if dcExtrapolation:
+            # adjust start frequency to insert DC term
             print("start:%d stop:%d points:%d" % (self.frequencies[0], self.frequencies[-1], self.points))
             nv.set_frequencies(int(self.frequencies[-1] / opt.points), opt.stop, opt.points)
             print("start:%d stop:%d points:%d" % (self.frequencies[0], self.frequencies[-1], self.points))
@@ -274,26 +275,38 @@ class NanoVNA:
         # x *= window[len(x):]
         nh = len(x) * 2
         NFFT = 2**(len(str(bin(nh)[2:])))
-        print("num: %d, NFFT: %d" % (nh, NFFT))
         data = np.zeros(NFFT, dtype='complex128')
+        corr = 0
+        if dcExtrapolation:
+            corr = NFFT / (len(x) * 2 + 1)
+        else:
+            corr = NFFT / (len(x) * 2 - 1)
+        print("num: %d, NFFT: %d, corr: %f" % (nh, NFFT, corr))
 
         fig = pl.figure(figsize=(8,10), dpi=100)
 
-        ax1 = fig.add_subplot(3, 1, 1)
+        ax1 = fig.add_subplot(4, 1, 1)
         ax1.set_ylim(-1.2, +1.2)
         ax1.set_xlim(0, 200e3)
         ax1.xaxis.set_major_formatter(EngFormatter(unit='Hz'))
 
-        ax2 = fig.add_subplot(3, 1, 2)
+        ax2 = fig.add_subplot(4, 1, 2)
         ax2.set_ylim(-1.2, +1.2)
         ax2.set_xlim(0, 200e6)
         ax2.xaxis.set_major_formatter(EngFormatter(unit='Hz'))
 
-        ax3 = fig.add_subplot(3, 1, 3)
+        ax3 = fig.add_subplot(4, 1, 3)
         ax3.set_ylim(-1.2, +1.2)
         ax3.set_xlim(0, 20e-9)
         ax3.axhline(y=0, color='grey')
         ax3.xaxis.set_major_formatter(EngFormatter(unit='s'))
+
+        ax4 = fig.add_subplot(4, 1, 4)
+        ax4.set_ylim(-40, +3)
+        ax4.set_xlim(0, 20e-9)
+        ax4.axhline(y=0, color='grey')
+        ax4.yaxis.set_major_formatter(EngFormatter(unit='dB'))
+        ax4.xaxis.set_major_formatter(EngFormatter(unit='s'))
 
         if dcExtrapolation:
             # DC extrapolation
@@ -342,15 +355,13 @@ class NanoVNA:
         ax2.plot(xaxis, data.imag, marker=".", label="imag")
 
         td = np.fft.ifft(data, NFFT)
-        print(td)
-        td = np.real(td)
-        step = td.cumsum()
+        step = np.real(td).cumsum()
         print(self.frequencies[1] - self.frequencies[0])
         time = 1 / (self.frequencies[1] - self.frequencies[0])
         t_axis = np.linspace(0, time, NFFT)
 
         ax3.plot(t_axis, step, label="step response")
-        ax3.plot(t_axis, td,label="impulse response")
+        ax4.plot(t_axis, np.log10(np.abs(td * corr)) * 20,label="impulse response")
 
         ax1.legend( loc = 'lower right')
         ax2.legend( loc = 'lower right')
